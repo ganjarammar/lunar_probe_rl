@@ -3,6 +3,8 @@ import pygame
 import gymnasium as gym
 from gymnasium import spaces
 import random
+import math
+import time
 
 class LunarEnvironment(gym.Env):
     def __init__(self):
@@ -50,14 +52,52 @@ class LunarEnvironment(gym.Env):
             (140, 140, 140)   # Abu-abu terang
         ]
         
-        # Parameter fisika
-        self.gravity = 1.62
+        # Parameter fisika yang disesuaikan
+        self.gravity = 0.5  # Gravitasi dikurangi dari 1.62 ke 0.5
         self.dt = 0.05
-        self.thrust_force = 2.0
+        self.thrust_force = 1.0  # Thrust force juga disesuaikan
+        
+        # Tinggi permukaan bulan dari bawah layar
+        self.moon_height = 100
+        self.moon_surface_y = self.screen_height - self.moon_height
+        
+        # Ketinggian default untuk probe dan target
+        self.probe_hover_height = 20  # Jarak dari permukaan bulan
         
         # Landing zones
         self.landing_zones = []
         self.generate_landing_zones()
+        
+        # Tambahan untuk objek luar angkasa
+        self.stars = []
+        self.galaxies = [
+            {
+                "name": "Andromeda",
+                "color": [200, 200, 255],
+                "position": (self.screen_width * 0.25, self.screen_height * 0.2),
+                "size": 100,
+                "rotation": 45,
+                "rotation_speed": 0.01  # Diperlambat dari 0.05
+            },
+            {
+                "name": "Sombrero",
+                "color": [255, 200, 200],
+                "position": (self.screen_width * 0.75, self.screen_height * 0.3),
+                "size": 80,
+                "rotation": -30,
+                "rotation_speed": 0.005  # Diperlambat dari 0.03
+            }
+        ]
+        self.asteroids = []
+        self.asteroid_velocities = []
+        self.asteroid_craters = []  # Menyimpan posisi kawah untuk setiap asteroid
+        self.generate_space_objects()
+        
+        # Simpan posisi awal untuk penanda
+        self.initial_x = None
+        
+        # Generate permukaan bulan sekali di awal
+        self.moon_craters = self._generate_craters()
         
         self.reset()
     
@@ -78,22 +118,86 @@ class LunarEnvironment(gym.Env):
             craters.append((x, y, radius))
         return craters
     
+    def generate_space_objects(self):
+        # Generate bintang
+        self.stars = []
+        for _ in range(100):
+            x = random.randint(0, self.screen_width)
+            y = random.randint(0, self.moon_surface_y - 50)
+            brightness = random.uniform(0.5, 1.0)
+            self.stars.append((x, y, brightness))
+        
+        # Reset galaksi dengan struktur yang benar
+        self.galaxies = [
+            {
+                "name": "Andromeda",
+                "color": [200, 200, 255],
+                "position": (self.screen_width * 0.25, self.screen_height * 0.2),
+                "size": 100,
+                "rotation": 45,
+                "rotation_speed": 0.01  # Diperlambat dari 0.05
+            },
+            {
+                "name": "Sombrero",
+                "color": [255, 200, 200],
+                "position": (self.screen_width * 0.75, self.screen_height * 0.3),
+                "size": 80,
+                "rotation": -30,
+                "rotation_speed": 0.005  # Diperlambat dari 0.03
+            }
+        ]
+        
+        # Generate asteroid dengan kawah statis
+        self.asteroids = []
+        self.asteroid_velocities = []
+        self.asteroid_craters = []
+        for _ in range(5):
+            x = random.randint(0, self.screen_width)
+            y = random.randint(0, self.moon_surface_y - 100)
+            size = random.randint(15, 30)
+            
+            # Generate kawah statis untuk asteroid ini
+            craters = []
+            for _ in range(size // 5):  # Jumlah kawah proporsional dengan ukuran
+                crater_angle = random.uniform(0, 2 * math.pi)
+                crater_dist = random.uniform(0, size * 0.7)
+                crater_x = crater_dist * math.cos(crater_angle)
+                crater_y = crater_dist * math.sin(crater_angle)
+                crater_size = random.uniform(size * 0.1, size * 0.3)
+                craters.append((crater_x, crater_y, crater_size))
+            
+            self.asteroids.append([x, y, size])
+            self.asteroid_craters.append(craters)
+            # Kecepatan sangat lambat
+            vx = random.uniform(-0.2, 0.2)
+            vy = random.uniform(-0.1, 0.1)
+            self.asteroid_velocities.append([vx, vy])
+    
     def reset(self):
-        # Pilih posisi awal dan target secara random di bagian atas
+        # Generate ulang objek luar angkasa setiap episode baru
+        self.generate_space_objects()
+        
+        # Pilih posisi awal dan target
         start_x = random.choice(self.landing_zones)
         target_x = random.choice([x for x in self.landing_zones if x != start_x])
         
+        # Simpan posisi awal untuk penanda
+        self.initial_x = start_x
+        
+        # Posisi y diatur relatif terhadap permukaan bulan
+        probe_y = self.moon_surface_y - self.probe_hover_height
+        
         self.state = {
             'x': start_x,
-            'y': self.screen_height * 0.2,  # 20% dari atas layar
+            'y': probe_y,
             'fuel': 100.0,
             'vel_x': 0.0,
             'vel_y': 0.0,
             'target_x': target_x,
-            'target_y': self.screen_height * 0.2
+            'target_y': probe_y  # Target pada ketinggian yang sama
         }
         
-        self.thrust_particles = []  # Reset partikel gas
+        self.thrust_particles = []
         self.last_action = np.zeros(4)
         return self._get_observation()
     
@@ -126,6 +230,19 @@ class LunarEnvironment(gym.Env):
         
         # Update fuel
         self.state['fuel'] -= sum(action) * self.dt
+        
+        # Update posisi asteroid
+        for i, (asteroid, velocity) in enumerate(zip(self.asteroids, self.asteroid_velocities)):
+            asteroid[0] += velocity[0]
+            asteroid[1] += velocity[1]
+            
+            # Wrap around screen
+            if asteroid[0] < -50: asteroid[0] = self.screen_width + 50
+            if asteroid[0] > self.screen_width + 50: asteroid[0] = -50
+            if asteroid[1] < -50: asteroid[1] = self.moon_surface_y
+            if asteroid[1] > self.moon_surface_y: asteroid[1] = -50
+            
+            self.asteroids[i] = asteroid
         
         # Hitung reward
         reward = self._calculate_reward()
@@ -182,6 +299,13 @@ class LunarEnvironment(gym.Env):
         if self._is_at_target():
             return True
         
+        # Cek tabrakan dengan permukaan bulan
+        if self.state['y'] >= self.moon_surface_y - self.probe_size/2:
+            done = True
+            reward = -100  # Penalti untuk menabrak permukaan
+            self.state['y'] = self.moon_surface_y - self.probe_size/2  # Prevent going below surface
+            return self._get_observation(), reward, done, {}
+        
         return False
     
     def _is_at_target(self):
@@ -210,7 +334,7 @@ class LunarEnvironment(gym.Env):
         self.thrust_particles = updated_particles
     
     def render(self):
-        # Handle pygame events
+        # Handle pygame events - penting untuk responsivitas window
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -218,26 +342,92 @@ class LunarEnvironment(gym.Env):
         
         self.screen.fill((0, 0, 0))
         
-        # Gambar permukaan bulan dengan gradasi dan kawah
-        moon_surface = pygame.Surface((self.screen_width, 100))
-        for y in range(100):
-            color_idx = int(y / 33)  # Bagi permukaan menjadi 3 bagian
+        # Gambar bintang berkedip
+        for x, y, brightness in self.stars:
+            current_brightness = brightness * (0.7 + 0.3 * math.sin(time.time() * 5 + x * y))
+            color = int(255 * current_brightness)
+            pygame.draw.circle(self.screen, (color, color, color), (int(x), int(y)), 1)
+        
+        # Gambar galaksi dengan detail lebih baik
+        for galaxy in self.galaxies:
+            surface = pygame.Surface((200, 200), pygame.SRCALPHA)
+            center = 100
+            
+            # Gambar inti galaksi
+            color = galaxy["color"]  # Sekarang ini akan bekerja karena struktur data yang benar
+            pygame.draw.circle(surface, (*color, 150), (center, center), 30)
+            
+            # Update rotasi galaksi
+            galaxy["rotation"] += galaxy["rotation_speed"]
+            
+            # Gambar lengan spiral
+            for arm in range(5):  # 5 lengan spiral
+                start_angle = (2 * math.pi * arm / 5) + galaxy["rotation"]
+                for r in range(10, 90, 2):
+                    angle = start_angle + (r * 0.1)
+                    x = center + r * math.cos(angle)
+                    y = center + r * math.sin(angle)
+                    
+                    # Variasi transparansi berdasarkan radius
+                    alpha = int(150 * (1 - r/90))
+                    
+                    # Gambar kelompok bintang di sepanjang lengan
+                    for _ in range(3):
+                        offset_x = random.uniform(-5, 5)
+                        offset_y = random.uniform(-5, 5)
+                        size = random.randint(1, 3)
+                        pygame.draw.circle(surface, (*color, alpha),
+                                        (int(x + offset_x), int(y + offset_y)), size)
+            
+            # Posisikan galaksi
+            pos = galaxy["position"]
+            self.screen.blit(surface, (pos[0] - 100, pos[1] - 100))
+        
+        # Gambar asteroid dengan kawah statis
+        for (x, y, size), craters in zip(self.asteroids, self.asteroid_craters):
+            # Gambar asteroid dasar
+            pygame.draw.circle(self.screen, (169, 169, 169), (int(x), int(y)), size)
+            
+            # Gambar kawah statis
+            for crater_x, crater_y, crater_size in craters:
+                # Translasi posisi kawah relatif terhadap posisi asteroid
+                abs_crater_x = x + crater_x
+                abs_crater_y = y + crater_y
+                pygame.draw.circle(self.screen, (100, 100, 100), 
+                                 (int(abs_crater_x), int(abs_crater_y)), 
+                                 int(crater_size))
+        
+        # Gambar permukaan bulan (tidak berubah selama episode)
+        moon_surface = pygame.Surface((self.screen_width, self.moon_height))
+        for y in range(self.moon_height):
+            color_idx = int(y / (self.moon_height/3))
             if color_idx > 2: color_idx = 2
             pygame.draw.line(moon_surface, self.moon_colors[color_idx],
                            (0, y), (self.screen_width, y))
         
-        # Gambar kawah
-        for x, y, radius in self._generate_craters():
+        # Gambar kawah yang sudah di-generate
+        for x, y, radius in self.moon_craters:
             pygame.draw.circle(moon_surface, self.moon_colors[0], 
-                             (x, y - (self.screen_height - 100)), radius)
+                             (x, y - (self.screen_height - self.moon_height)), radius)
         
-        self.screen.blit(moon_surface, (0, self.screen_height - 100))
+        self.screen.blit(moon_surface, (0, self.moon_surface_y))
         
-        # Gambar landing zones
+        # Gambar landing zones dan penanda
         for x in self.landing_zones:
+            # Landing zone (abu-abu)
             pygame.draw.line(self.screen, (80, 80, 80),
-                           (x - 30, self.screen_height - 5),
-                           (x + 30, self.screen_height - 5), 4)
+                           (x - 30, self.moon_surface_y - 5),
+                           (x + 30, self.moon_surface_y - 5), 4)
+        
+        # Penanda posisi awal (merah, tetap)
+        pygame.draw.line(self.screen, (255, 0, 0),
+                        (self.initial_x - 30, self.moon_surface_y - 5),
+                        (self.initial_x + 30, self.moon_surface_y - 5), 4)
+        
+        # Penanda target (hijau)
+        pygame.draw.line(self.screen, (0, 255, 0),
+                        (self.state['target_x'] - 30, self.moon_surface_y - 5),
+                        (self.state['target_x'] + 30, self.moon_surface_y - 5), 4)
         
         # Gambar probe (kotak abu-abu)
         probe_rect = pygame.Rect(
@@ -308,14 +498,5 @@ class LunarEnvironment(gym.Env):
             x, y, _, _, life, color = particle
             size = int(2 + (life / self.particle_life) * 3)  # Partikel mengecil seiring waktu
             pygame.draw.circle(self.screen, color, (int(x), int(y)), size)
-        
-        # Gambar indikator posisi awal dan target di atas
-        target_y = self.screen_height * 0.2
-        pygame.draw.line(self.screen, (255, 0, 0),  # Posisi awal (merah)
-                        (self.state['x'] - 15, target_y - 20),
-                        (self.state['x'] + 15, target_y - 20), 4)
-        pygame.draw.line(self.screen, (0, 255, 0),  # Target (hijau)
-                        (self.state['target_x'] - 15, target_y - 20),
-                        (self.state['target_x'] + 15, target_y - 20), 4)
         
         pygame.display.flip() 
