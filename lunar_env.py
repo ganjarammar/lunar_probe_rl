@@ -78,7 +78,7 @@ class LunarEnvironment(gym.Env):
                 "position": (self.screen_width * 0.25, self.screen_height * 0.2),
                 "size": 100,
                 "rotation": 45,
-                "rotation_speed": 0.01  # Diperlambat dari 0.05
+                "rotation_speed": 0.001  # Dari 0.01 ke 0.001
             },
             {
                 "name": "Sombrero",
@@ -86,7 +86,7 @@ class LunarEnvironment(gym.Env):
                 "position": (self.screen_width * 0.75, self.screen_height * 0.3),
                 "size": 80,
                 "rotation": -30,
-                "rotation_speed": 0.005  # Diperlambat dari 0.03
+                "rotation_speed": 0.0005  # Dari 0.005 ke 0.0005
             }
         ]
         self.asteroids = []
@@ -106,7 +106,7 @@ class LunarEnvironment(gym.Env):
         # Buat beberapa landing zone di sepanjang permukaan bulan
         self.landing_zones = []
         zone_width = 60
-        possible_x = range(zone_width, self.screen_width - zone_width, zone_width * 2)
+        possible_x = range(zone_width, self.screen_width - zone_width, zone_width)
         for x in possible_x:
             self.landing_zones.append(x)
     
@@ -136,7 +136,7 @@ class LunarEnvironment(gym.Env):
                 "position": (self.screen_width * 0.25, self.screen_height * 0.2),
                 "size": 100,
                 "rotation": 45,
-                "rotation_speed": 0.01  # Diperlambat dari 0.05
+                "rotation_speed": 0.001  # Dari 0.01 ke 0.001
             },
             {
                 "name": "Sombrero",
@@ -144,7 +144,7 @@ class LunarEnvironment(gym.Env):
                 "position": (self.screen_width * 0.75, self.screen_height * 0.3),
                 "size": 80,
                 "rotation": -30,
-                "rotation_speed": 0.005  # Diperlambat dari 0.03
+                "rotation_speed": 0.0005  # Dari 0.005 ke 0.0005
             }
         ]
         
@@ -170,13 +170,23 @@ class LunarEnvironment(gym.Env):
             self.asteroids.append([x, y, size])
             self.asteroid_craters.append(craters)
             # Kecepatan sangat lambat
-            vx = random.uniform(-0.2, 0.2)
-            vy = random.uniform(-0.1, 0.1)
+            vx = random.uniform(-0.02, 0.02)  # dari -0.2 ke -0.02
+            vy = random.uniform(-0.01, 0.01)  # dari -0.1 ke -0.01
             self.asteroid_velocities.append([vx, vy])
     
     def reset(self):
         # Generate ulang objek luar angkasa setiap episode baru
         self.generate_space_objects()
+        
+        # Generate ulang posisi kawah
+        self.moon_craters = self._generate_craters()
+        
+        # Generate ulang posisi galaksi
+        for galaxy in self.galaxies:
+            galaxy["position"] = (
+                random.uniform(100, self.screen_width-100),
+                random.uniform(100, self.moon_surface_y-100)
+            )
         
         # Pilih posisi awal dan target
         start_x = random.choice(self.landing_zones)
@@ -404,7 +414,7 @@ class LunarEnvironment(gym.Env):
         moon_surface = pygame.Surface((self.screen_width, self.moon_height))
         for y in range(self.moon_height):
             color_idx = int(y / (self.moon_height/3))
-            if color_idx > 2: color_idx = 2
+            if (color_idx > 2): color_idx = 2
             pygame.draw.line(moon_surface, self.moon_colors[color_idx],
                            (0, y), (self.screen_width, y))
         
