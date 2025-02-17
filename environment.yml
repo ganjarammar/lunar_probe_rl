@@ -1,0 +1,14 @@
+name: lunar_landing_rl
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - pygame
+  - numpy
+  - matplotlib
+  - pandas
+  - pip
+  - pip:
+    - tensorflow==2.13.0
+    - gymnasium==0.29.1 
