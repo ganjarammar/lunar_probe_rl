@@ -26,11 +26,12 @@ class LunarEnvironment(gym.Env):
             dtype=np.float32
         )
         
-        # Inisialisasi pygame
+        # Inisialisasi pygame dengan flag yang benar
         pygame.init()
         self.screen_width = 800
         self.screen_height = 600
-        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.HWSURFACE | pygame.DOUBLEBUF)
+        pygame.display.set_caption("Lunar Probe")
         
         # Ukuran probe dan thruster
         self.probe_size = 30
@@ -202,24 +203,21 @@ class LunarEnvironment(gym.Env):
         return self._get_observation()
     
     def step(self, action):
-        # Simpan action untuk render
         self.last_action = action.copy()
-        
-        # Hitung total gaya dari semua thruster
         thrust_x = 0
         thrust_y = 0
         
-        # Top thrusters (mendorong ke bawah)
-        thrust_y += (action[0] + action[1]) * self.thrust_force
+        # Left thruster [0] mendorong ke kanan (+x)
+        thrust_x += action[0] * self.thrust_force
         
-        # Bottom thrusters (mendorong ke atas)
-        thrust_y -= (action[2] + action[3]) * self.thrust_force
+        # Right thruster [1] mendorong ke kiri (-x) 
+        thrust_x -= action[1] * self.thrust_force
         
-        # Left thrusters (mendorong ke kanan)
-        thrust_x += (action[1] + action[3]) * self.thrust_force
+        # Top thruster [2] mendorong ke bawah (+y)
+        thrust_y += action[2] * self.thrust_force
         
-        # Right thrusters (mendorong ke kiri)
-        thrust_x -= (action[0] + action[2]) * self.thrust_force
+        # Bottom thruster [3] mendorong ke atas (-y)
+        thrust_y -= action[3] * self.thrust_force
         
         # Update kecepatan dan posisi
         self.state['vel_x'] += thrust_x * self.dt
@@ -334,12 +332,17 @@ class LunarEnvironment(gym.Env):
         self.thrust_particles = updated_particles
     
     def render(self):
+        # Pastikan screen ada
+        if self.screen is None:
+            self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.HWSURFACE | pygame.DOUBLEBUF)
+        
         # Handle pygame events - penting untuk responsivitas window
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 exit()
         
+        # Bersihkan layar dengan warna hitam
         self.screen.fill((0, 0, 0))
         
         # Gambar bintang berkedip
@@ -499,4 +502,6 @@ class LunarEnvironment(gym.Env):
             size = int(2 + (life / self.particle_life) * 3)  # Partikel mengecil seiring waktu
             pygame.draw.circle(self.screen, color, (int(x), int(y)), size)
         
-        pygame.display.flip() 
+        # Pastikan display diupdate
+        pygame.display.update()
+        pygame.event.pump()  # Handle events untuk mencegah "not responding"
