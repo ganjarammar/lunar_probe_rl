@@ -22,7 +22,7 @@ class LunarEnvironment(gym.Env):
         self.observation_space = spaces.Box(
             low=np.array([-np.inf, -np.inf, 0, -np.inf, -np.inf, -np.inf, -np.inf]),  
             # [x, y, fuel, vel_x, vel_y, target_x, target_y]
-            high=np.array([np.inf, np.inf, 100, np.inf, np.inf, np.inf, np.inf]),
+            high=np.array([np.inf, np.inf, 500, np.inf, np.inf, np.inf, np.inf]),  # Ubah dari 100 ke 500
             dtype=np.float32
         )
         
@@ -99,6 +99,12 @@ class LunarEnvironment(gym.Env):
         
         # Generate permukaan bulan sekali di awal
         self.moon_craters = self._generate_craters()
+        
+        # Tambah properti untuk fuel indicator
+        self.fuel_icon_size = 40
+        self.fuel_icon_padding = 10
+        self.fuel_text_color = (255, 255, 255)  # Putih
+        self.fuel_color = (255, 165, 0)  # Orange
         
         self.reset()
     
@@ -201,7 +207,7 @@ class LunarEnvironment(gym.Env):
         self.state = {
             'x': start_x,
             'y': probe_y,
-            'fuel': 100.0,
+            'fuel': 500.0,  # Ubah dari 100 ke 500
             'vel_x': 0.0,
             'vel_y': 0.0,
             'target_x': target_x,
@@ -511,6 +517,42 @@ class LunarEnvironment(gym.Env):
             x, y, _, _, life, color = particle
             size = int(2 + (life / self.particle_life) * 3)  # Partikel mengecil seiring waktu
             pygame.draw.circle(self.screen, color, (int(x), int(y)), size)
+        
+        # Gambar fuel indicator
+        fuel_percentage = (self.state['fuel'] / 500.0) * 100
+        
+        # Gambar icon bahan bakar
+        icon_x = self.screen_width - self.fuel_icon_size - self.fuel_icon_padding
+        icon_y = self.fuel_icon_padding
+        
+        # Tentukan warna berdasarkan persentase
+        current_fuel_color = (255, 0, 0) if fuel_percentage <= 50 else self.fuel_color
+        
+        # Gambar wadah bahan bakar (outline)
+        pygame.draw.rect(self.screen, current_fuel_color, 
+                        (icon_x, icon_y, self.fuel_icon_size, self.fuel_icon_size), 2)
+        
+        # Gambar isi bahan bakar
+        fuel_height = int((fuel_percentage / 100) * (self.fuel_icon_size - 4))
+        fuel_y = icon_y + (self.fuel_icon_size - 2) - fuel_height
+        if fuel_height > 0:
+            pygame.draw.rect(self.screen, current_fuel_color,
+                           (icon_x + 2, fuel_y, self.fuel_icon_size - 4, fuel_height))
+        
+        # Gambar label "Fuel"
+        font = pygame.font.Font(None, 24)
+        fuel_label = font.render("Fuel", True, self.fuel_text_color)
+        label_rect = fuel_label.get_rect()
+        label_rect.right = icon_x - 5
+        label_rect.bottom = icon_y + self.fuel_icon_size//2 - 5  # Posisikan di atas persentase
+        self.screen.blit(fuel_label, label_rect)
+        
+        # Gambar text persentase
+        text = font.render(f"{int(fuel_percentage)}%", True, self.fuel_text_color)
+        text_rect = text.get_rect()
+        text_rect.right = icon_x - 5
+        text_rect.top = icon_y + self.fuel_icon_size//2 + 5  # Posisikan di bawah label
+        self.screen.blit(text, text_rect)
         
         # Pastikan display diupdate
         pygame.display.update()
